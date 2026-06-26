@@ -1,6 +1,20 @@
 const encoder = new TextEncoder();
 export const DEFAULT_PBKDF2_ITERATIONS = 20000;
 
+// Minimum loop iteration count so short inputs don't leak their length via timing.
+// 256 covers SHA-256 hex digests (64 chars) and typical session tokens.
+const TIMING_SAFE_MIN_ITERATIONS = 256;
+
+export function timingSafeEqual(a: string, b: string): boolean {
+  let diff = 0;
+  const len = Math.max(a.length, b.length, TIMING_SAFE_MIN_ITERATIONS);
+  for (let i = 0; i < len; i++) {
+    diff |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
+  }
+  diff |= a.length ^ b.length;
+  return diff === 0;
+}
+
 async function pbkdf2(password: string, salt: string, iterations: number = DEFAULT_PBKDF2_ITERATIONS): Promise<string> {
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -44,7 +58,7 @@ export async function verifyPassword(
   iterations: number = DEFAULT_PBKDF2_ITERATIONS
 ): Promise<boolean> {
   const digest = await hashPassword(password, username, pepper, iterations);
-  return digest === storedHash;
+  return timingSafeEqual(digest, storedHash);
 }
 
 export function generateSessionToken(): string {
