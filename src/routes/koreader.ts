@@ -70,25 +70,17 @@ router.post("/users/create", async (c) => {
     logError(c, "User Creation Failed", error);
 
     const errorMsg = error?.message ? String(error.message).toUpperCase() : "";
+    const causeMsg = error?.cause
+      ? (typeof error.cause === "string"
+          ? error.cause.toUpperCase()
+          : String(error.cause?.message ?? "").toUpperCase())
+      : "";
 
-    let causeMsg = "";
-    if (error?.cause) {
-      causeMsg = typeof error.cause === 'string'
-        ? error.cause.toUpperCase()
-        : (error.cause.message ? String(error.cause.message).toUpperCase() : "");
-    }
-
-    const isDuplicate = errorMsg.includes("UNIQUE") || causeMsg.includes("UNIQUE");
-
-    if (isDuplicate) {
+    if (errorMsg.includes("UNIQUE") || causeMsg.includes("UNIQUE")) {
       return c.json({ message: "Username is already registered." }, 402);
     }
 
-    const errMsg = (c.env.DEBUG === "1" || c.env.DEBUG === "true")
-      ? `Creation failed: ${error?.message || "Unknown error"}`
-      : "Username is already registered.";
-
-    return c.json({ message: errMsg }, 402);
+    return c.json({ message: "Internal server error" }, 500);
   }
 });
 
