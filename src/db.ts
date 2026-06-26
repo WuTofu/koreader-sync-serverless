@@ -2,6 +2,7 @@ import type { DatabaseAdapter } from "./database/adapter";
 import type { ProgressRow, UserRow } from "./types";
 import initMigrationSql from "../migrations/0001_init.sql";
 import statisticsMigrationSql from "../migrations/0002_statistics_sync.sql";
+import adminSessionsSql from "../migrations/0004_admin_sessions.sql";
 
 const REQUIRED_TABLES = ["users", "progress", "sessions", "statistics_snapshot"] as const;
 
@@ -103,6 +104,7 @@ export async function initializeDatabase(db: DatabaseAdapter): Promise<void> {
   const statements = [
     ...splitSqlStatements(initMigrationSql),
     ...splitSqlStatements(statisticsMigrationSql),
+    ...splitSqlStatements(adminSessionsSql),
   ];
 
   for (const statement of statements) {
@@ -395,6 +397,39 @@ export async function getProgressSummaryByUser(
       last_sync_at: number | null;
     }>();
   return row ?? null;
+}
+
+export async function createAdminSession(
+  db: DatabaseAdapter,
+  tokenHash: string,
+  expiresAt: number
+): Promise<void> {
+  await db.prepare("INSERT INTO admin_sessions (token_hash, expires_at) VALUES (?, ?)")
+    .bind(tokenHash, expiresAt)
+    .run();
+}
+
+export async function findAdminSessionByTokenHash(
+  db: DatabaseAdapter,
+  tokenHash: string
+): Promise<{ id: number } | null> {
+  const row = await db.prepare(
+    "SELECT id FROM admin_sessions WHERE token_hash = ? AND expires_at > unixepoch() LIMIT 1"
+  )
+    .bind(tokenHash)
+    .first<{ id: number }>();
+  return row ?? null;
+}
+
+export async function deleteAdminSessionByTokenHash(
+  db: DatabaseAdapter,
+  tokenHash: string
+): Promise<void> {
+  await db.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").bind(tokenHash).run();
+}
+
+export async function purgeExpiredAdminSessions(db: DatabaseAdapter): Promise<void> {
+  await db.prepare("DELETE FROM admin_sessions WHERE expires_at < unixepoch()").run();
 }
 
 export async function listDeviceUsageByUser(

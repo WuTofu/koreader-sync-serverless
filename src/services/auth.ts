@@ -1,5 +1,5 @@
 import { getCookie } from "hono/cookie";
-import { findUserByUsername, findWebUserBySessionTokenHash } from "../db";
+import { findAdminSessionByTokenHash, findUserByUsername, findWebUserBySessionTokenHash, purgeExpiredAdminSessions } from "../db";
 import { sha256, timingSafeEqual, verifyPassword } from "../crypto";
 import { parsePbkdf2Iterations } from "./common";
 import type { AppContext } from "../context";
@@ -52,12 +52,15 @@ export async function authWebUser(c: AppContextWithDb): Promise<{ userId: number
   return { userId: row.id, username: row.username };
 }
 
-export async function authAdmin(c: AppContext): Promise<{ mode: "token" } | null> {
-  const adminToken = getCookie(c, ADMIN_SESSION_COOKIE);
-  const expectedToken = c.env.ADMIN_TOKEN ?? "";
-  if (!adminToken || !expectedToken) return null;
-  const expectedTokenHash = await sha256(`${expectedToken}:${c.env.PASSWORD_PEPPER}`);
-  const ok = timingSafeEqual(adminToken, expectedTokenHash);
-  if (!ok) return null;
+export async function authAdmin(c: AppContextWithDb): Promise<{ mode: "token" } | null> {
+  const token = getCookie(c, ADMIN_SESSION_COOKIE);
+  if (!token || !c.env.ADMIN_TOKEN) return null;
+  const tokenHash = await sha256(`${token}:${c.env.PASSWORD_PEPPER}`);
+  const db = resolveDb(c);
+  // Best-effort cleanup: expired sessions are small and infrequent, so purge
+  // opportunistically on each auth check without blocking the response.
+  void purgeExpiredAdminSessions(db).catch((e) => console.error("[admin] session purge failed:", e));
+  const session = await findAdminSessionByTokenHash(db, tokenHash);
+  if (!session) return null;
   return { mode: "token" };
 }

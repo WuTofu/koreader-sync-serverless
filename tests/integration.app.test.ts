@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
-import { hashPassword, sha256 } from "../src/crypto";
+import { hashPassword } from "../src/crypto";
 import { parsePbkdf2Iterations } from "../src/services/common";
 import { getStatisticsSnapshot, listAllProgressByUser, upsertStatisticsSnapshot } from "../src/db";
 import { createMockEnv } from "./helpers/mock-db";
@@ -345,16 +345,42 @@ describe("worker integration", () => {
     expect(booksData.items[0].total_read_time).toBe(50);
   });
 
-  it("accepts admin cookie computed from token and pepper", async () => {
+  it("admin login issues a revocable session cookie", async () => {
     const env = createMockEnv();
-    const adminSessionHash = await sha256(`${env.ADMIN_TOKEN}:${env.PASSWORD_PEPPER}`);
-    const res = await app.request(
-      "/admin/me",
-      { method: "GET", headers: { cookie: `ks_admin_session=${adminSessionHash}` } },
+
+    // Unauthenticated request is rejected
+    const unauthRes = await app.request("/admin/me", { method: "GET" }, env);
+    expect(unauthRes.status).toBe(401);
+
+    // Login with the correct token
+    const loginRes = await app.request(
+      "/admin/auth/login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "admin-token" }),
+      },
       env
     );
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ mode: "token" });
+    expect(loginRes.status).toBe(200);
+    const adminCookie = getCookieHeaderFromResponse(loginRes, "ks_admin_session");
+
+    // Cookie grants access
+    const meRes = await app.request("/admin/me", { method: "GET", headers: { cookie: adminCookie } }, env);
+    expect(meRes.status).toBe(200);
+    await expect(meRes.json()).resolves.toEqual({ mode: "token" });
+
+    // Logout revokes the session server-side
+    const logoutRes = await app.request(
+      "/admin/auth/logout",
+      { method: "POST", headers: { cookie: adminCookie } },
+      env
+    );
+    expect(logoutRes.status).toBe(200);
+
+    // Same cookie is now rejected
+    const afterLogout = await app.request("/admin/me", { method: "GET", headers: { cookie: adminCookie } }, env);
+    expect(afterLogout.status).toBe(401);
   });
 
   it("serves calendar aggregates from the statistics summary", async () => {
