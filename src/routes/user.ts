@@ -260,7 +260,7 @@ router.get("/web/statistics/books", async (c) => {
   const auth = await authWebUser(c);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
   const page = Math.max(1, Number(c.req.query("page") || "1"));
-  const pageSize = c.req.query("pageSize") === "100" ? 100 : 50;
+  const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize") || "50")));
   const offset = (page - 1) * pageSize;
 
   const withSummary = await getStatisticsWithSummary(c.get("db"), auth.userId);
