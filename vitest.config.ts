@@ -13,6 +13,10 @@ export default defineConfig({
       },
     },
   ],
+  resolve: {
+    // Prefer .ts source files over pre-compiled .js counterparts when both exist.
+    extensions: [".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".json"],
+  },
   test: {
     include: ["tests/**/*.test.ts"],
   },

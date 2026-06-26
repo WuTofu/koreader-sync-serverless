@@ -21,6 +21,7 @@ type StatisticsSnapshot = {
   statistics_summary_json: string | null;
   updated_at: number;
 };
+type AdminSession = { token_hash: string; expires_at: number };
 
 type MockDbOptions = {
   initialized?: boolean;
@@ -58,6 +59,7 @@ class MockD1Database {
   private users: User[] = [];
   private progress: Progress[] = [];
   private sessions: Session[] = [];
+  private adminSessions: AdminSession[] = [];
   private statistics = new Map<number, StatisticsSnapshot>();
   private userSeq = 1;
   private initialized = true;
@@ -88,7 +90,7 @@ class MockD1Database {
       return kind === "first" ? (exists ? { name: table } : null) : [];
     }
 
-    if (q.startsWith("create table") || q.startsWith("create index") || q.startsWith("pragma") || q.startsWith("drop ")) {
+    if (q.startsWith("create table") || q.startsWith("create index") || q.startsWith("pragma") || q.startsWith("drop ") || q.startsWith("alter table")) {
       this.initialized = true;
       this.missingTables.clear();
       return { meta: { changes: 0 } };
@@ -300,6 +302,13 @@ class MockD1Database {
       };
     }
 
+    if (q.startsWith("delete from statistics_snapshot where user_id = ?")) {
+      const userId = Number(bound[0]);
+      const had = this.statistics.has(userId);
+      this.statistics.delete(userId);
+      return { meta: { changes: had ? 1 : 0 } };
+    }
+
     if (q.startsWith("insert into statistics_snapshot") && q.includes("on conflict(user_id) do update set")) {
       const userId = Number(bound[0]);
       this.statistics.set(userId, {
@@ -312,6 +321,30 @@ class MockD1Database {
         updated_at: now,
       });
       return { meta: { changes: 1 } };
+    }
+
+    if (q.startsWith("insert into admin_sessions")) {
+      this.adminSessions.push({ token_hash: String(bound[0] ?? ""), expires_at: Number(bound[1]) });
+      return { meta: { changes: 1 } };
+    }
+
+    if (q.startsWith("select") && q.includes("from admin_sessions where token_hash = ?")) {
+      const tokenHash = String(bound[0] ?? "");
+      const session = this.adminSessions.find((s) => s.token_hash === tokenHash && s.expires_at > now);
+      return session ? { id: 1 } : null;
+    }
+
+    if (q.startsWith("delete from admin_sessions where token_hash = ?")) {
+      const tokenHash = String(bound[0] ?? "");
+      const before = this.adminSessions.length;
+      this.adminSessions = this.adminSessions.filter((s) => s.token_hash !== tokenHash);
+      return { meta: { changes: before - this.adminSessions.length } };
+    }
+
+    if (q.startsWith("delete from admin_sessions where expires_at")) {
+      const before = this.adminSessions.length;
+      this.adminSessions = this.adminSessions.filter((s) => s.expires_at >= now);
+      return { meta: { changes: before - this.adminSessions.length } };
     }
 
     throw new Error(`Unhandled SQL in mock DB (${kind}): ${sql}`);
