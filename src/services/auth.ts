@@ -1,6 +1,6 @@
 import { getCookie } from "hono/cookie";
 import { findUserByUsername, findWebUserBySessionTokenHash } from "../db";
-import { sha256, verifyPassword } from "../crypto";
+import { sha256, timingSafeEqual, verifyPassword } from "../crypto";
 import { parsePbkdf2Iterations } from "./common";
 import type { AppContext } from "../context";
 import type { DatabaseAdapter } from "../database/adapter";
@@ -16,7 +16,6 @@ function resolveDb(c: AppContextWithDb): DatabaseAdapter {
 
 export const USER_SESSION_COOKIE = "ks_session";
 export const ADMIN_SESSION_COOKIE = "ks_admin_session";
-const TIMING_COMPARE_STEPS = 256;
 
 export function isValidField(field: unknown): field is string {
   return typeof field === "string" && field.length > 0;
@@ -26,16 +25,7 @@ export function isValidKeyField(field: unknown): field is string {
   return isValidField(field) && !field.includes(":");
 }
 
-export function timingSafeEqual(a: string, b: string): boolean {
-  let diff = 0;
-  for (let i = 0; i < TIMING_COMPARE_STEPS; i++) {
-    const ac = i < a.length ? a.charCodeAt(i) : 0;
-    const bc = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ac ^ bc;
-  }
-  diff |= a.length ^ b.length;
-  return diff === 0;
-}
+export { timingSafeEqual } from "../crypto";
 
 export async function authKoreader(c: AppContextWithDb): Promise<{ userId: number; username: string } | null> {
   const username = c.req.header("x-auth-user");
