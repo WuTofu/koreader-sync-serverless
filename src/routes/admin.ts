@@ -1,7 +1,9 @@
 import { Hono } from "hono";
-import { deleteCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { md5 } from "js-md5";
 import {
+  createAdminSession,
+  deleteAdminSessionByTokenHash,
   deleteSessionsByUserId,
   deleteUserById,
   getDatabaseInitStatus,
@@ -10,9 +12,9 @@ import {
   listUsers,
   updateUserPasswordById,
 } from "../db";
-import { hashPassword, sha256 } from "../crypto";
+import { hashPassword, sha256, timingSafeEqual } from "../crypto";
 import { getMessages, pickLocale } from "../i18n";
-import { ADMIN_SESSION_COOKIE, authAdmin, timingSafeEqual } from "../services/auth";
+import { ADMIN_SESSION_COOKIE, authAdmin } from "../services/auth";
 import { badRequest, isValidPassword, parsePbkdf2Iterations, parseSessionTtlHours } from "../services/common";
 import { renderAdminPage } from "../ui/adminPage";
 import type { AppEnv } from "../context";
@@ -33,8 +35,12 @@ router.post("/admin/auth/login", async (c) => {
   if (!token || !timingSafeEqual(token, expectedToken)) return c.json({ error: "Invalid token" }, 401);
 
   const ttlHours = parseSessionTtlHours(c.env);
-  const adminSessionHash = await sha256(`${expectedToken}:${c.env.PASSWORD_PEPPER}`);
-  setCookie(c, ADMIN_SESSION_COOKIE, adminSessionHash, {
+  const sessionToken = crypto.randomUUID();
+  const tokenHash = await sha256(`${sessionToken}:${c.env.PASSWORD_PEPPER}`);
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlHours * 3600;
+  await createAdminSession(c.get("db"), tokenHash, expiresAt);
+
+  setCookie(c, ADMIN_SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: true,
     sameSite: "Lax",
@@ -45,6 +51,11 @@ router.post("/admin/auth/login", async (c) => {
 });
 
 router.post("/admin/auth/logout", async (c) => {
+  const token = getCookie(c, ADMIN_SESSION_COOKIE);
+  if (token) {
+    const tokenHash = await sha256(`${token}:${c.env.PASSWORD_PEPPER}`);
+    await deleteAdminSessionByTokenHash(c.get("db"), tokenHash);
+  }
   deleteCookie(c, ADMIN_SESSION_COOKIE, { path: "/" });
   return c.json({ status: "ok" });
 });
