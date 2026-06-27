@@ -32,6 +32,11 @@ const en: LocaleMessages = {
     initButton: "Initialize database",
     initRequired: "Database is not initialized. Please initialize first.",
     initSuccess: "Database initialization successful",
+    createTitle: "Create User",
+    createUsernamePlaceholder: "Username",
+    createPasswordPlaceholder: "Password",
+    createButton: "Create User",
+    createSuccessPrefix: "User created: ",
   },
   user: {
     title: "KOReader Sync · User Center",

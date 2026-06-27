@@ -332,6 +332,15 @@ export function renderAdminPage(locale: Locale): string {
         </div>
       </section>
 
+      <section class="card hidden" id="createCard">
+        <h3 style="margin:0 0 14px; font-size:17px; font-weight:600;">${m.createTitle}</h3>
+        <div class="row">
+          <input id="newUsername" placeholder="${m.createUsernamePlaceholder}" />
+          <input id="newPassword" type="password" placeholder="${m.createPasswordPlaceholder}" />
+          <button id="createBtn">${m.createButton}</button>
+        </div>
+      </section>
+
       <section class="card" id="usersTableWrap">
         <div class="row row-between" style="margin-bottom:14px;">
           <h3 style="margin:0; font-size:17px; font-weight:600;">${m.userManagement}</h3>
@@ -372,6 +381,7 @@ export function renderAdminPage(locale: Locale): string {
     const loginCard = document.getElementById('loginCard');
     const adminCard = document.getElementById('adminCard');
     const initCard = document.getElementById('initCard');
+    const createCard = document.getElementById('createCard');
     const usersTableWrap = document.getElementById('usersTableWrap');
 
     function toast(text, type = 'info', duration = 3500) {
@@ -418,11 +428,13 @@ export function renderAdminPage(locale: Locale): string {
       const status = await jsonFetch('/admin/init/status');
       if (status.initialized) {
         initCard.classList.add('hidden');
+        createCard.classList.remove('hidden');
         usersTableWrap.classList.remove('hidden');
         await loadUsers();
         return;
       }
       initCard.classList.remove('hidden');
+      createCard.classList.add('hidden');
       usersTableWrap.classList.add('hidden');
       toast(I18N.initRequired, 'error');
     }
@@ -440,6 +452,7 @@ export function renderAdminPage(locale: Locale): string {
           adminCard.classList.remove('hidden');
           document.getElementById('adminInfo').textContent = I18N.statusLoggedIn;
           initCard.classList.remove('hidden');
+          createCard.classList.add('hidden');
           usersTableWrap.classList.add('hidden');
           toast(I18N.initRequired, 'error');
           return;
@@ -508,6 +521,20 @@ export function renderAdminPage(locale: Locale): string {
         await jsonFetch('/admin/init', { method: 'POST', body: '{}' });
         toast(I18N.initSuccess, 'success');
         await loadInitStatus();
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    });
+
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      const username = document.getElementById('newUsername').value;
+      const password = document.getElementById('newPassword').value;
+      try {
+        await jsonFetch('/admin/users', { method: 'POST', body: JSON.stringify({ username, password }) });
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        toast(I18N.createSuccessPrefix + username, 'success');
+        await loadUsers();
       } catch (e) {
         toast(e.message, 'error');
       }

@@ -32,6 +32,11 @@ const ja: LocaleMessages = {
     initButton: "データベースを初期化",
     initRequired: "データベースが未初期化です。先に初期化してください。",
     initSuccess: "データベース初期化に成功しました",
+    createTitle: "ユーザー作成",
+    createUsernamePlaceholder: "ユーザー名",
+    createPasswordPlaceholder: "パスワード",
+    createButton: "ユーザーを作成",
+    createSuccessPrefix: "ユーザー作成成功：",
   },
   user: {
     title: "KOReader Sync · ユーザーセンター",

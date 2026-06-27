@@ -29,6 +29,11 @@ export interface AdminMessages {
   initButton: string;
   initRequired: string;
   initSuccess: string;
+  createTitle: string;
+  createUsernamePlaceholder: string;
+  createPasswordPlaceholder: string;
+  createButton: string;
+  createSuccessPrefix: string;
 }
 
 export interface UserMessages {

@@ -32,6 +32,11 @@ const zh: LocaleMessages = {
     initButton: "初始化数据库",
     initRequired: "数据库尚未初始化，请先初始化。",
     initSuccess: "数据库初始化成功",
+    createTitle: "创建用户",
+    createUsernamePlaceholder: "用户名",
+    createPasswordPlaceholder: "密码",
+    createButton: "创建用户",
+    createSuccessPrefix: "用户创建成功：",
   },
   user: {
     title: "KOReader Sync · 用户中心",
