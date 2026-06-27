@@ -1,6 +1,6 @@
 name = "koreader-sync"
 main = "src/index.ts"
-compatibility_date = "2026-03-25"
+compatibility_date = "2026-06-16"
 
 [vars]
 SESSION_TTL_HOURS = "168"
@@ -8,7 +8,7 @@ SESSION_TTL_HOURS = "168"
 [[d1_databases]]
 binding = "DB"
 database_name = "koreader-sync-db"
-database_id = "d31acddc-2d87-4743-9531-5396673d8c9a"
+database_id = "acecef52-2a94-4d50-a6eb-6237822f6ac7"
 migrations_dir = "migrations"
 
 [observability]
