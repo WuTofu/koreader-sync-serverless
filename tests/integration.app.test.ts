@@ -345,6 +345,73 @@ describe("worker integration", () => {
     expect(booksData.items[0].total_read_time).toBe(50);
   });
 
+  it("admin can create a user account", async () => {
+    const env = createMockEnv();
+
+    // Unauthenticated create request is rejected
+    const unauthRes = await app.request(
+      "/admin/users",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "newuser", password: "secret" }),
+      },
+      env
+    );
+    expect(unauthRes.status).toBe(401);
+
+    // Log in as admin
+    const loginRes = await app.request(
+      "/admin/auth/login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "admin-token" }),
+      },
+      env
+    );
+    expect(loginRes.status).toBe(200);
+    const adminCookie = getCookieHeaderFromResponse(loginRes, "ks_admin_session");
+
+    // Create a user via admin endpoint
+    const createRes = await app.request(
+      "/admin/users",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: adminCookie },
+        body: JSON.stringify({ username: "newuser", password: "secret" }),
+      },
+      env
+    );
+    expect(createRes.status).toBe(201);
+    await expect(createRes.json()).resolves.toEqual({ username: "newuser" });
+
+    // The new user can authenticate using KOReader auth (proves hash recipe is correct)
+    const { md5 } = await import("js-md5");
+    const authRes = await app.request(
+      "/users/auth",
+      {
+        method: "GET",
+        headers: { "x-auth-user": "newuser", "x-auth-key": md5("secret") },
+      },
+      env
+    );
+    expect(authRes.status).toBe(200);
+    await expect(authRes.json()).resolves.toMatchObject({ authorized: "OK" });
+
+    // Duplicate username returns 409
+    const dupRes = await app.request(
+      "/admin/users",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: adminCookie },
+        body: JSON.stringify({ username: "newuser", password: "other" }),
+      },
+      env
+    );
+    expect(dupRes.status).toBe(409);
+  });
+
   it("admin login issues a revocable session cookie", async () => {
     const env = createMockEnv();
 

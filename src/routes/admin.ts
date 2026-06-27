@@ -3,6 +3,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { md5 } from "js-md5";
 import {
   createAdminSession,
+  createUser,
   deleteAdminSessionByTokenHash,
   deleteSessionsByUserId,
   deleteUserById,
@@ -14,7 +15,7 @@ import {
 } from "../db";
 import { hashPassword, sha256, timingSafeEqual } from "../crypto";
 import { getMessages, pickLocale } from "../i18n";
-import { ADMIN_SESSION_COOKIE, authAdmin } from "../services/auth";
+import { ADMIN_SESSION_COOKIE, authAdmin, isValidField, isValidKeyField } from "../services/auth";
 import { badRequest, isValidPassword, parsePbkdf2Iterations, parseSessionTtlHours } from "../services/common";
 import { renderAdminPage } from "../ui/adminPage";
 import type { AppEnv } from "../context";
@@ -75,6 +76,43 @@ router.get("/admin/users", async (c) => {
   if (!status.initialized) return c.json({ error: messages.initRequired, code: "DB_NOT_INITIALIZED", missingTables: status.missingTables }, 409);
   const users = await listUsers(c.get("db"));
   return c.json({ items: users });
+});
+
+router.post("/admin/users", async (c) => {
+  const locale = pickLocale(c.req.header("accept-language"));
+  const messages = getMessages(locale).admin;
+  const auth = await authAdmin(c);
+  if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  const status = await getDatabaseInitStatus(c.get("db"));
+  if (!status.initialized) return c.json({ error: messages.initRequired, code: "DB_NOT_INITIALIZED", missingTables: status.missingTables }, 409);
+
+  let body: { username?: string; password?: string };
+  try {
+    body = await c.req.json<{ username?: string; password?: string }>();
+  } catch {
+    return badRequest("Invalid JSON body");
+  }
+
+  const { username = "", password = "" } = body;
+  if (!isValidKeyField(username) || !isValidField(password)) {
+    return badRequest("Invalid username or password");
+  }
+
+  try {
+    const iterations = parsePbkdf2Iterations(c.env);
+    const passwordHash = await hashPassword(md5(password), username, c.env.PASSWORD_PEPPER, iterations);
+    await createUser(c.get("db"), username, passwordHash);
+    return c.json({ username }, 201);
+  } catch (error: any) {
+    const errorMsg = error?.message ? String(error.message).toUpperCase() : "";
+    const causeMsg = error?.cause
+      ? (typeof error.cause === "string" ? error.cause.toUpperCase() : String(error.cause?.message ?? "").toUpperCase())
+      : "";
+    if (errorMsg.includes("UNIQUE") || causeMsg.includes("UNIQUE")) {
+      return c.json({ error: "Username is already registered." }, 409);
+    }
+    return c.json({ error: "Internal server error" }, 500);
+  }
 });
 
 router.delete("/admin/users/:id", async (c) => {

@@ -148,6 +148,14 @@ export function renderAdminPage(locale: Locale): string {
           <button id="initBtn">${m.initButton}</button>
         </div>
       </section>
+      <section class="card hidden" id="createCard" style="margin-top:10px;">
+        <h4 style="margin:0 0 8px;">${m.createTitle}</h4>
+        <div class="row">
+          <input id="newUsername" placeholder="${m.createUsernamePlaceholder}" />
+          <input id="newPassword" type="password" placeholder="${m.createPasswordPlaceholder}" />
+          <button id="createBtn">${m.createButton}</button>
+        </div>
+      </section>
       <div id="usersTableWrap" style="overflow:auto; margin-top:10px; max-height:580px;">
         <table>
           <thead>
@@ -178,6 +186,7 @@ export function renderAdminPage(locale: Locale): string {
     const loginCard = document.getElementById('loginCard');
     const adminCard = document.getElementById('adminCard');
     const initCard = document.getElementById('initCard');
+    const createCard = document.getElementById('createCard');
     const usersTableWrap = document.getElementById('usersTableWrap');
     const loginMsg = document.getElementById('loginMsg');
     const adminMsg = document.getElementById('adminMsg');
@@ -218,11 +227,13 @@ export function renderAdminPage(locale: Locale): string {
       const status = await jsonFetch('/admin/init/status');
       if (status.initialized) {
         initCard.classList.add('hidden');
+        createCard.classList.remove('hidden');
         usersTableWrap.classList.remove('hidden');
         await loadUsers();
         return;
       }
       initCard.classList.remove('hidden');
+      createCard.classList.add('hidden');
       usersTableWrap.classList.add('hidden');
       setMessage(adminMsg, I18N.initRequired, true);
     }
@@ -240,6 +251,7 @@ export function renderAdminPage(locale: Locale): string {
           adminCard.classList.remove('hidden');
           document.getElementById('adminInfo').textContent = I18N.statusLoggedIn;
           initCard.classList.remove('hidden');
+          createCard.classList.add('hidden');
           usersTableWrap.classList.add('hidden');
           setMessage(adminMsg, I18N.initRequired, true);
           return;
@@ -305,6 +317,20 @@ export function renderAdminPage(locale: Locale): string {
         await jsonFetch('/admin/init', { method: 'POST', body: '{}' });
         setMessage(adminMsg, I18N.initSuccess, false);
         await loadInitStatus();
+      } catch (e) {
+        setMessage(adminMsg, e.message, true);
+      }
+    });
+
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      const username = document.getElementById('newUsername').value;
+      const password = document.getElementById('newPassword').value;
+      try {
+        await jsonFetch('/admin/users', { method: 'POST', body: JSON.stringify({ username, password }) });
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        setMessage(adminMsg, I18N.createSuccessPrefix + username, false);
+        await loadUsers();
       } catch (e) {
         setMessage(adminMsg, e.message, true);
       }
