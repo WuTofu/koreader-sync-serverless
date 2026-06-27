@@ -12,9 +12,25 @@ const locales: Record<Locale, LocaleMessages> = {
 };
 
 export function pickLocale(acceptLanguageHeader?: string | null): Locale {
-  const value = (acceptLanguageHeader || "").toLowerCase();
-  if (value.includes("zh")) return "zh";
-  if (value.includes("ja")) return "ja";
+  const supported = new Set<Locale>(["en", "zh", "ja"]);
+  const header = (acceptLanguageHeader || "").trim();
+  if (!header) return "en";
+
+  const ranked = header
+    .split(",")
+    .map((entry) => {
+      const [tag, ...params] = entry.trim().split(";");
+      const qParam = params.find((p) => p.trim().toLowerCase().startsWith("q="));
+      const q = qParam ? parseFloat(qParam.trim().slice(2)) : 1;
+      const primary = (tag || "").trim().toLowerCase().split("-")[0];
+      return { primary, q };
+    })
+    .filter(({ q }) => Number.isFinite(q) && q > 0)
+    .sort((a, b) => b.q - a.q);
+
+  for (const { primary } of ranked) {
+    if (supported.has(primary as Locale)) return primary as Locale;
+  }
   return "en";
 }
 
