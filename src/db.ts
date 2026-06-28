@@ -3,6 +3,7 @@ import type { ProgressRow, UserRow } from "./types";
 import initMigrationSql from "../migrations/0001_init.sql";
 import statisticsMigrationSql from "../migrations/0002_statistics_sync.sql";
 import adminSessionsSql from "../migrations/0004_admin_sessions.sql";
+import optimizeIndexesSql from "../migrations/0005_optimize_indexes.sql";
 
 const REQUIRED_TABLES = ["users", "progress", "sessions", "statistics_snapshot"] as const;
 
@@ -105,6 +106,7 @@ export async function initializeDatabase(db: DatabaseAdapter): Promise<void> {
     ...splitSqlStatements(initMigrationSql),
     ...splitSqlStatements(statisticsMigrationSql),
     ...splitSqlStatements(adminSessionsSql),
+    ...splitSqlStatements(optimizeIndexesSql),
   ];
 
   for (const statement of statements) {
@@ -171,7 +173,12 @@ export async function upsertProgress(
       device = excluded.device,
       device_id = excluded.device_id,
       timestamp = excluded.timestamp,
-      updated_at = unixepoch()`
+      updated_at = unixepoch()
+    WHERE
+      progress   IS NOT excluded.progress   OR
+      percentage IS NOT excluded.percentage OR
+      device     IS NOT excluded.device     OR
+      device_id  IS NOT excluded.device_id`
   )
     .bind(
       userId,
