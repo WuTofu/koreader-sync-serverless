@@ -2,10 +2,16 @@ import { getCookie } from "hono/cookie";
 import { findAdminSessionByTokenHash, findUserByUsername, findWebUserBySessionTokenHash, purgeExpiredAdminSessions } from "../db";
 import { sha256, timingSafeEqual, verifyPassword } from "../crypto";
 import { parsePbkdf2Iterations } from "./common";
-import { getCachedUser, putCachedUser } from "./authCache";
+import { getCachedUser, putCachedUser, safeWaitUntil } from "./authCache";
 import type { AppContext } from "../context";
 import type { DatabaseAdapter } from "../database/adapter";
 import { resolveDatabaseAdapter } from "../context";
+
+// Throttle the expired-admin-session cleanup so it runs at most once per interval
+// instead of on every authAdmin() call. Module-scope, so it's per-isolate: worst case
+// each isolate runs it once per interval, which is still a large cut from "every request".
+const ADMIN_SESSION_PURGE_INTERVAL_MS = 60 * 60 * 1000;
+let lastAdminSessionPurgeAt = 0;
 
 type AppContextWithDb = AppContext & {
   get<K extends "db">(key: K): DatabaseAdapter;
@@ -62,9 +68,14 @@ export async function authAdmin(c: AppContextWithDb): Promise<{ mode: "token" } 
   if (!token || !c.env.ADMIN_TOKEN) return null;
   const tokenHash = await sha256(`${token}:${c.env.PASSWORD_PEPPER}`);
   const db = resolveDb(c);
-  // Best-effort cleanup: expired sessions are small and infrequent, so purge
-  // opportunistically on each auth check without blocking the response.
-  void purgeExpiredAdminSessions(db).catch((e) => console.error("[admin] session purge failed:", e));
+  // Best-effort cleanup: throttled to once per ADMIN_SESSION_PURGE_INTERVAL_MS instead
+  // of firing a DELETE on every admin request, and routed through waitUntil so it
+  // actually completes instead of racing the response.
+  const now = Date.now();
+  if (now - lastAdminSessionPurgeAt > ADMIN_SESSION_PURGE_INTERVAL_MS) {
+    lastAdminSessionPurgeAt = now;
+    safeWaitUntil(c, purgeExpiredAdminSessions(db).catch((e) => console.error("[admin] session purge failed:", e)));
+  }
   const session = await findAdminSessionByTokenHash(db, tokenHash);
   if (!session) return null;
   return { mode: "token" };
