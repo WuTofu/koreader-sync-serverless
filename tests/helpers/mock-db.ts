@@ -90,6 +90,13 @@ class MockD1Database {
       return kind === "first" ? (exists ? { name: table } : null) : [];
     }
 
+    if (q.includes("from sqlite_master") && q.includes("name in")) {
+      const tables = bound.map((value) => String(value));
+      const present = this.initialized ? tables.filter((table) => !this.missingTables.has(table)) : [];
+      const rows = present.map((name) => ({ name }));
+      return kind === "first" ? (rows[0] ?? null) : rows;
+    }
+
     if (q.startsWith("create table") || q.startsWith("create index") || q.startsWith("pragma") || q.startsWith("drop ") || q.startsWith("alter table")) {
       this.initialized = true;
       this.missingTables.clear();
