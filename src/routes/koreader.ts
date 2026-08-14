@@ -9,6 +9,7 @@ import {
 import { md5 } from "js-md5";
 import { hashPassword } from "../crypto";
 import { authKoreader, isValidField, isValidKeyField } from "../services/auth";
+import { invalidateCachedUser } from "../services/authCache";
 import { badRequest, parsePbkdf2Iterations } from "../services/common";
 import { buildStatisticsSummary, mergeSnapshots, normalizeBook, parseSnapshotFromJson } from "../services/statistics";
 import type {
@@ -65,6 +66,9 @@ router.post("/users/create", async (c) => {
     const iterations = parsePbkdf2Iterations(c.env);
     const passwordHash = await hashPassword(md5(password), username, c.env.PASSWORD_PEPPER, iterations);
     await createUser(c.get("db"), username, passwordHash);
+    // Clear any negative (unknown-username) auth cache entry left over from earlier
+    // failed sync attempts against this username.
+    invalidateCachedUser(c, username);
     return c.json({ username }, 201);
   } catch (error: any) {
     logError(c, "User Creation Failed", error);
