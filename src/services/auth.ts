@@ -2,6 +2,7 @@ import { getCookie } from "hono/cookie";
 import { findAdminSessionByTokenHash, findUserByUsername, findWebUserBySessionTokenHash, purgeExpiredAdminSessions } from "../db";
 import { sha256, timingSafeEqual, verifyPassword } from "../crypto";
 import { parsePbkdf2Iterations } from "./common";
+import { getCachedUser, putCachedUser } from "./authCache";
 import type { AppContext } from "../context";
 import type { DatabaseAdapter } from "../database/adapter";
 import { resolveDatabaseAdapter } from "../context";
@@ -32,7 +33,11 @@ export async function authKoreader(c: AppContextWithDb): Promise<{ userId: numbe
   const password = c.req.header("x-auth-key");
   if (!isValidKeyField(username) || !isValidField(password)) return null;
 
-  const user = await findUserByUsername(resolveDb(c), username);
+  let user = await getCachedUser(c.env, username);
+  if (user === undefined) {
+    user = await findUserByUsername(resolveDb(c), username);
+    putCachedUser(c, username, user);
+  }
   if (!user) return null;
 
   const iterations = parsePbkdf2Iterations(c.env);

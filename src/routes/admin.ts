@@ -16,6 +16,7 @@ import {
 import { hashPassword, sha256, timingSafeEqual } from "../crypto";
 import { getMessages, pickLocale } from "../i18n";
 import { ADMIN_SESSION_COOKIE, authAdmin, isValidField, isValidKeyField } from "../services/auth";
+import { invalidateCachedUser } from "../services/authCache";
 import { badRequest, isValidPassword, parsePbkdf2Iterations, parseSessionTtlHours } from "../services/common";
 import { renderAdminPage } from "../ui/adminPage";
 import type { AppEnv } from "../context";
@@ -102,6 +103,9 @@ router.post("/admin/users", async (c) => {
     const iterations = parsePbkdf2Iterations(c.env);
     const passwordHash = await hashPassword(md5(password), username, c.env.PASSWORD_PEPPER, iterations);
     await createUser(c.get("db"), username, passwordHash);
+    // Clear any negative (unknown-username) auth cache entry left over from earlier
+    // failed sync attempts against this username.
+    invalidateCachedUser(c, username);
     return c.json({ username }, 201);
   } catch (error: any) {
     const errorMsg = error?.message ? String(error.message).toUpperCase() : "";
@@ -124,8 +128,11 @@ router.delete("/admin/users/:id", async (c) => {
   if (!status.initialized) return c.json({ error: messages.initRequired, code: "DB_NOT_INITIALIZED", missingTables: status.missingTables }, 409);
   const userId = Number(c.req.param("id"));
   if (!Number.isInteger(userId) || userId <= 0) return badRequest("Invalid user id");
+  // Resolve the username before deleting so the auth cache entry can be cleared.
+  const userToDelete = await getUserById(c.get("db"), userId);
   const deleted = await deleteUserById(c.get("db"), userId);
   if (!deleted) return c.json({ error: "User not found" }, 404);
+  if (userToDelete) invalidateCachedUser(c, userToDelete.username);
   return c.json({ status: "ok" });
 });
 
@@ -156,6 +163,7 @@ router.put("/admin/users/:id/password", async (c) => {
   const passwordHash = await hashPassword(md5(newPassword), user.username, c.env.PASSWORD_PEPPER, iterations);
   const updated = await updateUserPasswordById(c.get("db"), userId, passwordHash);
   if (!updated) return c.json({ error: "User not found" }, 404);
+  invalidateCachedUser(c, user.username);
   await deleteSessionsByUserId(c.get("db"), userId);
   return c.json({ status: "ok" });
 });

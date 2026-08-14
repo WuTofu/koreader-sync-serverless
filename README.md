@@ -297,3 +297,22 @@ OPTIONAL environment variables:
 - `DEBUG`: optional (`"1"`/`"true"` enables debug error logs)
 - `PBKDF2_ITERATIONS`: optional number of iterations for PBKDF2 hashing, default `20000` (adjust based on your performance/security needs)
 - `ENABLE_USER_REGISTRATION`: optional (`"1"`/`"true"` to allow user self-registration, default is open registration)
+- `AUTH_CACHE_TTL_SECONDS`: optional TTL for the cached KOReader user lookup (isolate memory + edge Cache API), default `300`; set to `0` to disable caching
+- `AUTH_CACHE_NEGATIVE_TTL_SECONDS`: optional TTL for caching unknown usernames (blunts repeated D1 reads from scans/typos), default `30`
+
+### KOReader auth caching
+
+`GET /users/auth`, `PUT /syncs/progress`, `GET /syncs/progress/:document`, and `PUT /syncs/statistics`
+all authenticate via the `x-auth-user`/`x-auth-key` headers on every request, which previously meant a
+D1 read of the `users` table on every single sync call. That row is identical between requests until the
+password changes, so it's now cached in two tiers (see `src/services/authCache.ts`):
+
+1. **Isolate memory** — instant, but scoped to one Worker isolate.
+2. **Cache API (`caches.default`)** — scoped to one Cloudflare colo, survives isolate eviction, but is
+   inert on `*.workers.dev` subdomains (only works once the Worker is on a custom domain) and in local
+   dev — those calls are no-ops.
+
+The password hash is still verified on every request (PBKDF2), so a cache hit never bypasses auth. Cache
+entries are invalidated on user create/delete/password-change, but only for the isolate/colo that handled
+the mutation — other colos may still accept an old password for up to `AUTH_CACHE_TTL_SECONDS` after an
+admin password reset. Lower the TTL if that window is a concern.

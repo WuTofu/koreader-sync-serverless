@@ -9,6 +9,8 @@ export interface Env {
   PBKDF2_ITERATIONS?: string;
   ADMIN_TOKEN?: string;
   ENABLE_USER_REGISTRATION?: string;
+  AUTH_CACHE_TTL_SECONDS?: string;
+  AUTH_CACHE_NEGATIVE_TTL_SECONDS?: string;
 }
 
 export interface UserRow {
