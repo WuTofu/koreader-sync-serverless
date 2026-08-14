@@ -103,6 +103,13 @@ class MockD1Database {
       return { meta: { changes: 0 } };
     }
 
+    // 0006_progress_drop_autoincrement.sql's table-rebuild copy step. The mock DB models
+    // tables as JS arrays rather than real SQLite storage, so this is a structural no-op:
+    // rows already live in `this.progress` and the rebuild doesn't change their shape.
+    if (q.startsWith("insert into progress_new")) {
+      return { meta: { changes: 0 } };
+    }
+
     if (q.startsWith("insert into users")) {
       const username = String(bound[0] ?? "");
       const passwordHash = String(bound[1] ?? "");

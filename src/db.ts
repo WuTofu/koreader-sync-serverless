@@ -4,6 +4,7 @@ import initMigrationSql from "../migrations/0001_init.sql";
 import statisticsMigrationSql from "../migrations/0002_statistics_sync.sql";
 import adminSessionsSql from "../migrations/0004_admin_sessions.sql";
 import optimizeIndexesSql from "../migrations/0005_optimize_indexes.sql";
+import progressDropAutoincrementSql from "../migrations/0006_progress_drop_autoincrement.sql";
 
 const REQUIRED_TABLES = ["users", "progress", "sessions", "statistics_snapshot"] as const;
 
@@ -107,6 +108,7 @@ export async function initializeDatabase(db: DatabaseAdapter): Promise<void> {
     ...splitSqlStatements(statisticsMigrationSql),
     ...splitSqlStatements(adminSessionsSql),
     ...splitSqlStatements(optimizeIndexesSql),
+    ...splitSqlStatements(progressDropAutoincrementSql),
   ];
 
   for (const statement of statements) {
