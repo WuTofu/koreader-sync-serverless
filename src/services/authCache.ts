@@ -122,15 +122,23 @@ async function deleteEdgeCache(key: string): Promise<void> {
   }
 }
 
+function debugLog(env: Env, message: string): void {
+  if (env.DEBUG === "true" || env.DEBUG === "1") console.log(`[auth-cache] ${message}`);
+}
+
 /** Returns undefined on a cache miss (tier 1 and tier 2 both missed/expired). */
 export async function getCachedUser(env: Env, username: string): Promise<UserRow | null | undefined> {
   const key = await cacheKeyFor(env, username);
 
   const memoryHit = readMemory(key);
-  if (memoryHit !== undefined) return memoryHit;
+  if (memoryHit !== undefined) {
+    debugLog(env, `tier1 hit (memory, ${memoryCache.size} entries)`);
+    return memoryHit;
+  }
 
   const edgeHit = await readEdgeCache(key);
   if (edgeHit !== undefined) {
+    debugLog(env, "tier2 hit (edge cache), backfilling tier1");
     // Backfill tier 1. The Cache API doesn't expose remaining max-age, so refill with
     // the configured TTL rather than the edge entry's true remaining lifetime.
     const ttl = edgeHit === null ? parseAuthCacheNegativeTtlSeconds(env) : parseAuthCacheTtlSeconds(env);
@@ -138,6 +146,7 @@ export async function getCachedUser(env: Env, username: string): Promise<UserRow
     return edgeHit;
   }
 
+  debugLog(env, "miss (tier1 + tier2), falling through to D1");
   return undefined;
 }
 
@@ -152,6 +161,7 @@ export function putCachedUser(c: AppContext, username: string, row: UserRow | nu
       const key = await cacheKeyFor(env, username);
       writeMemory(key, row, ttlSeconds);
       await writeEdgeCache(key, row, ttlSeconds);
+      debugLog(env, `wrote tier1+tier2 (ttl=${ttlSeconds}s, ${row === null ? "negative" : "positive"})`);
     })()
   );
 }
@@ -165,6 +175,7 @@ export function invalidateCachedUser(c: AppContext, username: string): void {
       const key = await cacheKeyFor(env, username);
       memoryCache.delete(key);
       await deleteEdgeCache(key);
+      debugLog(env, "invalidated tier1+tier2");
     })()
   );
 }
