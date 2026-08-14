@@ -30,6 +30,12 @@ export function isValidPassword(password: string): boolean {
 }
 
 export function withSecurityHeaders(headers: Headers): Headers {
+  // Defensive: every route here is either authenticated or a small dynamic HTML shell,
+  // none benefits from edge caching. Without this, enabling Cloudflare's Workers Cache
+  // ([cache] enabled = true in wrangler.toml) would apply RFC 9111 heuristic freshness
+  // (200 -> 2h) keyed on path only — since KOReader auths via x-auth-user/x-auth-key
+  // headers (not Authorization), that would leak one user's cached response to another.
+  headers.set("cache-control", "no-store");
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");
   headers.set("referrer-policy", "no-referrer");

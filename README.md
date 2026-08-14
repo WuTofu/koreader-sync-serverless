@@ -316,3 +316,9 @@ The password hash is still verified on every request (PBKDF2), so a cache hit ne
 entries are invalidated on user create/delete/password-change, but only for the isolate/colo that handled
 the mutation — other colos may still accept an old password for up to `AUTH_CACHE_TTL_SECONDS` after an
 admin password reset. Lower the TTL if that window is a concern.
+
+Note: Cloudflare's newer [Workers Cache](https://developers.cloudflare.com/workers/cache/)
+(`[cache]` in `wrangler.toml`) is intentionally **not** enabled here — its cache key doesn't include
+custom headers, so it can't distinguish KOReader users by `x-auth-user`/`x-auth-key`, and would risk
+serving one user's progress to another. Every response instead carries `Cache-Control: no-store`
+(`src/services/common.ts`) as a guard against that being turned on by accident later.
