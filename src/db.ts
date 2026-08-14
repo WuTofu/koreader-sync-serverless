@@ -89,15 +89,15 @@ function splitSqlStatements(sql: string): string[] {
 export async function getDatabaseInitStatus(
   db: DatabaseAdapter
 ): Promise<{ initialized: boolean; missingTables: Array<(typeof REQUIRED_TABLES)[number]> }> {
-  const checks = await Promise.all(
-    REQUIRED_TABLES.map(async (tableName) => {
-      const row = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-        .bind(tableName)
-        .first<{ name: string }>();
-      return row?.name ? null : tableName;
-    })
-  );
-  const missingTables = checks.filter((name) => name !== null);
+  // Single query instead of one sqlite_master lookup per table — this runs on nearly
+  // every admin endpoint, so 4 reads -> 1 read there is a meaningful cut.
+  const placeholders = REQUIRED_TABLES.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders})`)
+    .bind(...REQUIRED_TABLES)
+    .all<{ name: string }>();
+  const present = new Set((results ?? []).map((row) => row.name));
+  const missingTables = REQUIRED_TABLES.filter((tableName) => !present.has(tableName));
   return { initialized: missingTables.length === 0, missingTables };
 }
 
