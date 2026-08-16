@@ -142,6 +142,7 @@ export async function listUsers(db: DatabaseAdapter): Promise<Array<{ id: number
 export async function deleteUserById(db: DatabaseAdapter, userId: number): Promise<boolean> {
   await db.prepare("DELETE FROM progress WHERE user_id = ?").bind(userId).run();
   await db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
+  await db.prepare("DELETE FROM statistics_snapshot WHERE user_id = ?").bind(userId).run();
   const result = await db.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
   return (result.meta.changes ?? 0) > 0;
 }

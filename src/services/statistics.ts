@@ -216,6 +216,17 @@ function mergeBooks(existing: StatisticsBookRow, incoming: StatisticsBookRow): S
     ...incomingRest
   } = incoming;
   const unknownFields = mergeUnknownFields(existingRest, incomingRest);
+  const mergedPageStats = dedupePageStats([...existingPageStats, ...incomingPageStats]);
+  // Derive aggregates from the deduplicated merged page_stat_data so that multi-device
+  // totals accumulate correctly. Same-device re-syncs don't double-count because
+  // dedupePageStats collapses identical [page, start_time, duration, total_pages] tuples.
+  // Never go below what either device already reported in case some reading isn't captured
+  // in page_stat_data (e.g. from other plugins).
+  const derivedReadTime = mergedPageStats.reduce((sum, r) => sum + r.duration, 0);
+  // Count unique page numbers (not sessions) — reading page 5 three times is still 1 page.
+  const derivedReadPages = new Set(
+    mergedPageStats.map((r) => r.page).filter((p): p is number => Number.isFinite(p))
+  ).size;
   return {
     ...unknownFields,
     md5: existingMd5,
@@ -227,9 +238,9 @@ function mergeBooks(existing: StatisticsBookRow, incoming: StatisticsBookRow): S
     pages: Math.max(existingPages, incomingPages),
     series: incomingSeries || existingSeries,
     language: incomingLanguage || existingLanguage,
-    total_read_time: Math.max(existingTotalReadTime, incomingTotalReadTime),
-    total_read_pages: Math.max(existingTotalReadPages, incomingTotalReadPages),
-    page_stat_data: dedupePageStats([...existingPageStats, ...incomingPageStats]),
+    total_read_time: Math.max(derivedReadTime, existingTotalReadTime, incomingTotalReadTime),
+    total_read_pages: Math.max(derivedReadPages, existingTotalReadPages, incomingTotalReadPages),
+    page_stat_data: mergedPageStats,
   };
 }
 

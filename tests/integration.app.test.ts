@@ -252,6 +252,97 @@ describe("worker integration", () => {
     expect(booksData.items).toHaveLength(1);
     expect(booksData.items[0].notes).toBe(2);
     expect(booksData.items[0].total_read_time).toBe(20);
+    // body2 reports total_read_pages=9; page_stat has one unique page → device value wins via Math.max
+    expect(booksData.items[0].total_read_pages).toBe(9);
+  });
+
+  it("accumulates total_read_pages correctly across devices and same-page re-reads", async () => {
+    const env = createMockEnv();
+    const md5Password = "5f4dcc3b5aa765d61d8327deb882cf99";
+    const hash = await hashPassword(md5Password, "multidev", env.PASSWORD_PEPPER, parsePbkdf2Iterations(env));
+    await env.DB.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").bind("multidev", hash).run();
+
+    const baseHeaders = {
+      "x-auth-user": "multidev",
+      "x-auth-key": md5Password,
+      "content-type": "application/json",
+      "x-client-version": "y-anna-1.0",
+      "User-Agent": "Mozilla/DONTLIKE/ANYTHING",
+    };
+
+    // Device A reads pages 1 and 2; page 1 is read twice in separate sessions (same page, different start_time).
+    // total_read_pages from device A is 2 (unique pages).
+    const syncA = {
+      schema_version: 20221111,
+      device: "Kindle",
+      device_id: "dev-a",
+      snapshot: {
+        books: [{
+          md5: "xyz",
+          title: "B",
+          authors: "Y",
+          notes: 0,
+          last_open: 100,
+          highlights: 0,
+          pages: 200,
+          series: "",
+          language: "en",
+          total_read_time: 30,
+          total_read_pages: 2,
+          page_stat_data: [
+            { page: 1, start_time: 1000, duration: 10, total_pages: 200 },
+            { page: 1, start_time: 2000, duration: 10, total_pages: 200 }, // same page, new session
+            { page: 2, start_time: 3000, duration: 10, total_pages: 200 },
+          ],
+        }],
+      },
+    };
+
+    // Device B reads pages 3 and 4; also independently tracks 2 unique pages.
+    const syncB = {
+      schema_version: 20221111,
+      device: "Kobo",
+      device_id: "dev-b",
+      snapshot: {
+        books: [{
+          md5: "xyz",
+          title: "B",
+          authors: "Y",
+          notes: 0,
+          last_open: 110,
+          highlights: 0,
+          pages: 200,
+          series: "",
+          language: "en",
+          total_read_time: 20,
+          total_read_pages: 2,
+          page_stat_data: [
+            { page: 3, start_time: 5000, duration: 10, total_pages: 200 },
+            { page: 4, start_time: 6000, duration: 10, total_pages: 200 },
+          ],
+        }],
+      },
+    };
+
+    await app.request("/syncs/statistics", { method: "PUT", headers: baseHeaders, body: JSON.stringify(syncA) }, env);
+    await app.request("/syncs/statistics", { method: "PUT", headers: baseHeaders, body: JSON.stringify(syncB) }, env);
+
+    const webLogin = await app.request(
+      "/web/auth/login",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "multidev", password: "password" }) },
+      env
+    );
+    const cookie = getCookieHeaderFromResponse(webLogin, "ks_session");
+    const booksRes = await app.request("/web/statistics/books", { headers: { cookie } }, env);
+    const booksData = await booksRes.json();
+
+    // 4 unique pages across both devices (1, 2 from A; 3, 4 from B).
+    // Math.max alone would give max(2, 2)=2; unique-page-count from merged page_stat gives 4.
+    expect(booksData.items[0].total_read_pages).toBe(4);
+    // Device A: 3 sessions × 10s = 30s (matches device-reported total_read_time=30).
+    // Device B: 2 sessions × 10s = 20s. All 5 sessions merge cleanly → derivedReadTime=50.
+    // Math.max(50, 30, 20) = 50.
+    expect(booksData.items[0].total_read_time).toBe(50);
   });
 
   it("accepts admin cookie computed from token and pepper", async () => {
